@@ -8,7 +8,7 @@
 # pycluster mcl blastp.out.ABC -I 1.4 -o blastp.mcl-1.4
 # pycluster extract gene.table blastp.mcl-1.4
 
-### * Set up
+### * Setup
 
 ### ** Import
 
