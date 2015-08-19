@@ -153,10 +153,11 @@ def main_table(args, stdout, stderr) :
 ### ** Main extract
 
 def main_extract(args, stdout, stderr) :
-    # Load gene table
-    geneTable = pygenes.GeneTable()
-    geneTable.loadTable(args.geneTable)
+    # Load gene table light data
+    stderr.write("Reading gene table file\n")
+    geneByMergedHash = pygenes.buildGeneTableMergedHashDict(args.geneTable)
     # Load cluster mapping
+    stderr.write("Loading cluster table\n")
     mergedPep2cl = dict()
     with open(args.clusters, "r") as fi :
         for l in fi :
@@ -167,25 +168,78 @@ def main_extract(args, stdout, stderr) :
                 clusterId = l[1]
                 assert not mergedPep2cl.get(geneId, False)
                 mergedPep2cl[geneId] = clusterId
+    # ClusterId to mergedPeptideHash dictionary
+    cl2mergedPep = dict()
+    for (geneId, clusterId) in mergedPep2cl.items() :
+        cl2mergedPep[clusterId] = cl2mergedPep.get(clusterId, [])
+        cl2mergedPep[clusterId].append(geneId)
     # Check output directory            
     if not os.path.isdir(args.outDir) :
         if os.path.isfile(args.outDir) :
             raise Exception("Output directory name already used for a file")
         os.makedirs(args.outDir)
-    # Build the extracted clusters
-    extClusters = dict()
-    for gene in geneTable :
-        clId = mergedPep2cl.get(gene.mergedPeptideHash, "NA")
-        extClusters[clId] = extClusters.get(clId, []) + [(gene.geneId,
-                                                          gene.peptideSeq)]
-    # Write the clusters
-    for (clId, seqs) in extClusters.items() :
-        if clId != "NA" :
-            path = os.path.join(args.outDir, clId + ".fa")
-            with open(path, "w") as fo :
-                for seq in seqs :
-                    fo.write(">" + seq[0] + "\n")
-                    fo.write(seq[1] + "\n")
+    # Write the extracted clusters
+    stderr.write("Writing the clusters\n")
+    i = 0
+    total = str(len(cl2mergedPep))
+    for (clId, listMergedHash) in cl2mergedPep.items() :
+        i += 1
+        stderr.write("Writing cluster " + str(i) + "/" + total + "\n")
+        path = os.path.join(args.outDir, clId + ".fa")
+        with open(path, "w") as fo :
+            for mergedHash in listMergedHash :
+                for (geneId, protSeq) in geneByMergedHash[mergedHash] :
+                    fo.write(">" + geneId + "\n")
+                    fo.write(protSeq + "\n")
 
-        
+### ** Main extract low mem (memory-friendly but slow)
 
+def main_extract_low_mem(args, stdout, stderr) :
+    # Build index for gene table
+    stderr.write("Building index for gene table file\n")
+    geneTableIndex = pygenes.buildGeneTableFileIndexField(args.geneTable,
+                                                          "mergedPeptideHash")
+    # Get sequence and name index
+    with open(args.geneTable, "r") as fi :
+        headers = fi.readline().lstrip("#").strip().split("\t")
+        protSeqI = headers.index("peptideSeq")
+        geneIdI = headers.index("geneId")
+    # Load cluster mapping
+    stderr.write("Loading cluster table\n")
+    mergedPep2cl = dict()
+    with open(args.clusters, "r") as fi :
+        for l in fi :
+            l = l.strip()
+            if l != "" :
+                l = l.split("\t")
+                geneId = l[0]
+                clusterId = l[1]
+                assert not mergedPep2cl.get(geneId, False)
+                mergedPep2cl[geneId] = clusterId
+    # ClusterId to mergedPeptideHash dictionary
+    cl2mergedPep = dict()
+    for (geneId, clusterId) in mergedPep2cl.items() :
+        cl2mergedPep[clusterId] = cl2mergedPep.get(clusterId, [])
+        cl2mergedPep[clusterId].append(geneId)
+    # Check output directory            
+    if not os.path.isdir(args.outDir) :
+        if os.path.isfile(args.outDir) :
+            raise Exception("Output directory name already used for a file")
+        os.makedirs(args.outDir)
+    # Write the extracted clusters
+    stderr.write("Writing the clusters\n")
+    fi = open(args.geneTable, "r")
+    i = 0
+    total = str(len(cl2mergedPep))
+    for (clId, listMergedHash) in cl2mergedPep.items() :
+        i += 1
+        stderr.write("Writing cluster " + str(i) + "/" + total + "\n")
+        path = os.path.join(args.outDir, clId + ".fa")
+        with open(path, "w") as fo :
+            for mergedHash in listMergedHash :
+                for genePos in geneTableIndex[mergedHash] :
+                    fi.seek(genePos)
+                    elements = fi.readline().strip().split("\t")
+                    fo.write(">" + elements[geneIdI] + "\n")
+                    fo.write(elements[protSeqI] + "\n")
+    fi.close()
