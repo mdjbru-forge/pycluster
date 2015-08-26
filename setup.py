@@ -5,7 +5,7 @@
 from setuptools import setup, find_packages
 
 setup(name = "pycluster",
-      version = "0.0.2",
+      version = "0.0.3",
       py_modules = ["pycluster", "pyclusterMainScripts"],
       entry_points =  {
           "console_scripts" : [
