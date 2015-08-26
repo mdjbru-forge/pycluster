@@ -18,6 +18,7 @@ import argparse
 import hashlib
 import pygenes as pygenes
 import pycluster as pycluster
+from Bio import SeqIO
 
 ### * Parser
 
@@ -77,12 +78,19 @@ def makeParser() :
                                        help = "Extract peptide sequences "
                                        "corresponding to clusters")
     sp_extract.add_argument("geneTable", metavar = "GENE_TABLE", type = str,
-                          help = "Gene table file (produced by pygenes)")
+                            help = "Gene table file (produced by pygenes). "
+                            "Alternatively, fasta file containing the merged "
+                            "peptides sequences if --mergedPeptides is used.")
     sp_extract.add_argument("clusters", metavar = "CLUSTER_TABLE", type = str,
                             help = "Cluster table file (columns: gene "
                             "identifier, cluster identifier)")
     sp_extract.add_argument("outDir", metavar = "OUTPUT_DIR", type = str,
                             help = "Output folder")
+    sp_extract.add_argument("-m", "--mergedPeptides", action = "store_true",
+                            help = "Extract merged peptides rather than "
+                            "original peptides. If this case, GENE_TABLE "
+                            "should be a fasta file containing the merged "
+                            "peptide sequences.")
     sp_extract.set_defaults(action = "extract")
     # Return
     return parser
@@ -154,8 +162,15 @@ def main_table(args, stdout, stderr) :
 
 def main_extract(args, stdout, stderr) :
     # Load gene table light data
-    stderr.write("Reading gene table file\n")
-    geneByMergedHash = pygenes.buildGeneTableMergedHashDict(args.geneTable)
+    if not args.mergedPeptides :
+        stderr.write("Reading gene table file\n")
+        geneByMergedHash = pygenes.buildGeneTableMergedHashDict(args.geneTable)
+    else :
+        stderr.write("Loading merged peptides\n")
+        fi = SeqIO.parse(args.geneTable, "fasta")
+        mergedPeptides = dict()
+        for seq in fi :
+            mergedPeptides[seq.description] = str(seq.seq)
     # Load cluster mapping
     stderr.write("Loading cluster table\n")
     mergedPep2cl = dict()
@@ -188,9 +203,13 @@ def main_extract(args, stdout, stderr) :
         path = os.path.join(args.outDir, clId + ".fa")
         with open(path, "w") as fo :
             for mergedHash in listMergedHash :
-                for (geneId, protSeq) in geneByMergedHash[mergedHash] :
-                    fo.write(">" + geneId + "\n")
-                    fo.write(protSeq + "\n")
+                if not args.mergedPeptides :
+                    for (geneId, protSeq) in geneByMergedHash[mergedHash] :
+                        fo.write(">" + geneId + "\n")
+                        fo.write(protSeq + "\n")
+                else :
+                    fo.write(">" + mergedHash + "\n")
+                    fo.write(mergedPeptides[mergedHash] + "\n")
 
 ### ** Main extract low mem (memory-friendly but slow)
 
